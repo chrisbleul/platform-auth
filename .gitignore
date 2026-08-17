@@ -1,0 +1,7 @@
+node_modules/
+
+# dist/ ist ABSICHTLICH eingecheckt (wie packages/design-system im
+# CGOPlattform-Repo) -- Konsumenten installieren dieses Paket per
+# "npm install github:chrisbleul/platform-auth#<tag>", ein git-Checkout
+# ohne eigenen Build-Schritt in der Ziel-App. Nach jeder Aenderung an src/
+# vor dem Commit: npm run build.
