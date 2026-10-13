@@ -103,3 +103,25 @@ npm run build   # vor jedem Commit an src/ -- dist/ ist eingecheckt
 Konsumenten pinnen einen Git-Tag (`#v1.0.0`), nicht `#main` -- ein Bug hier
 wuerde sonst alle sechs Apps gleichzeitig treffen, ohne dass eine App-CI ihn
 vorher gefangen haette.
+
+## MCP OAuth (ab 1.1.0)
+
+`@cgo/platform-auth/mcp-oauth` exportiert `createMcpOAuth({slug,name,description?,loginRedirectHeader?})`.
+Die Instanz liefert `registerOAuthRoutes(app,pool,config)`, `resolveOAuth`, `oauthChallenge`,
+`oauthResource`, `SCOPES`, `CHATGPT_MCP_PATH` und `tokenHash`. `OAuthIdentity` beschreibt
+Benutzer, Client, Freigabe und Scopes. `OAUTH_MIGRATION_SQL` liefert ausschließlich die drei
+OAuth-Tabellen und Indizes; diese SQL als eigene nummerierte App-Migration übernehmen.
+Bestehende Atlas-Tabellen und Tokens bleiben kompatibel. Die Bibliothek verändert keine Fachtabellen.
+
+Config: `PUBLIC_URL`, optional `OAUTH_CLIENT_ID`, `OAUTH_REDIRECT_URIS`, `OAUTH_ALLOWED_USER_IDS`.
+Ohne Client-ID ist OAuth aus. Apps müssen bei aktivem OAuth HTTPS, exakte Callback-URLs und
+nichtleere Benutzer-Allowlist beim Start validieren. Der Benutzer-Header-Adapter muss vor
+OAuth registriert werden. nginx prüft Browseridentität und überschreibt/entfernt Clientheader;
+MCP-Aufrufe verwenden ausschließlich die von `resolveOAuth` gelieferte Identität und müssen
+Benutzerbegrenzung sowie Tool-Scopes selbst durchsetzen.
+
+Authorization Code mit PKCE/S256, öffentlicher vorregistrierter Client ohne Secret,
+gehashte opaque Tokens, Refresh-Rotation, Widerruf, sitzungsgebundene Einwilligung und
+Origin-Prüfung. Eine Freigabe läuft maximal 30 Tage, ein Access-Token 15 Minuten.
+Die App hält OAuth-Tokens in ihrer eigenen Datenbank. Beim Entzug von CGO-App-Rechten
+zusätzlich die OAuth-Allowlist anpassen oder Freigaben widerrufen.

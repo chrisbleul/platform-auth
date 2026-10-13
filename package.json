@@ -1,12 +1,13 @@
 {
   "name": "@cgo/platform-auth",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Gemeinsamer Adapter fuer X-Auth-User-Id/-Email (nginx auth_request gegen cgo-auth) -- ein Fastify-Plugin und ein framework-agnostischer Next.js-Helper.",
   "exports": {
     "./fastify": "./dist/fastify.js",
-    "./next": "./dist/next.js"
+    "./next": "./dist/next.js",
+    "./mcp-oauth": "./dist/mcp-oauth.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -25,6 +26,12 @@
     "@types/node": "^22.18.9",
     "fastify": "^5.11.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@types/pg": "^8.11.10"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "^11.2.0",
+    "pg": "^8.16.3",
+    "zod": "^4.4.3"
   }
 }
