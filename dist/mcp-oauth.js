@@ -102,6 +102,9 @@ export function createMcpOAuth(options) {
                 }
                 done(null, values);
             });
+            // GET /.well-known/oauth-protected-resource (RFC 9728): sagt dem Client, welche Ressource
+            // (der MCP-Pfad) geschützt ist und welcher Autorisierungsserver zuständig ist. Öffentlich,
+            // keine Prüfung außer dem Rate-Limit des Scopes.
             oauth.get('/.well-known/oauth-protected-resource', async () => ({
                 resource: oauthResource(config),
                 authorization_servers: [issuer(config)],
@@ -120,8 +123,13 @@ export function createMcpOAuth(options) {
                 scopes_supported: SCOPES,
                 authorization_response_iss_parameter_supported: true,
             });
-            // RFC 8414: nginx leitet den domainweiten Pfad mit Issuer-Suffix hierhin weiter.
+            // GET /oauth/.well-known/oauth-authorization-server (RFC 8414): Endpunkte, Grant-Typen,
+            // nur PKCE S256 und öffentliche Clients ohne Secret. Öffentlich. nginx leitet den
+            // domainweiten Pfad mit Issuer-Suffix hierhin weiter.
             oauth.get('/oauth/.well-known/oauth-authorization-server', metadata);
+            // preHandler der Browser-Seiten (authorize, connections): verlangt eine CGO-Sitzung
+            // (requireAuth auf den nginx-Headern), leitet abgelaufene Anmeldungen zum Login und lässt nur
+            // Nutzer aus OAUTH_ALLOWED_USER_IDS durch.
             const browserAuth = async (request, reply) => {
                 // no-referrer würde bei Formular-POSTs Origin:null erzeugen und unsere
                 // Herkunftsprüfung auslösen. same-origin erhält Origin für eigene Formulare
@@ -144,6 +152,10 @@ export function createMcpOAuth(options) {
                 if (!allowed(config, request.user.userId))
                     return reply.code(403).send({ error: `${options.name}-Zugang nicht freigegeben` });
             };
+            // GET /oauth/authorize: Einwilligungsseite. Prüft client_id und redirect_uri exakt gegen die
+            // Konfiguration, Ressource, Scopes und PKCE-Challenge (S256), legt eine Anfrage mit
+            // Einmal-Nonce (10 Minuten) an und zeigt das Formular mit strenger CSP. Eigenes Rate-Limit
+            // 20/min.
             oauth.get('/oauth/authorize', { preHandler: browserAuth, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
                 const parsed = authQuery.safeParse(request.query);
                 if (!parsed.success)
@@ -184,6 +196,10 @@ export function createMcpOAuth(options) {
         <form method="post" action="${issuer(config)}/authorize"><input type="hidden" name="nonce" value="${nonce}">
         <button name="decision" value="allow">Verbindung erlauben</button><button name="decision" value="deny">Abbrechen</button></form></html>`);
             });
+            // POST /oauth/authorize: Entscheidung aus dem Formular. Prüft Origin (CSRF), verbraucht den
+            // Nonce atomar für genau diesen Nutzer und prüft Client, Redirect und Ressource erneut. Bei
+            // "allow" entsteht ein Code (2 Minuten, nur als Hash gespeichert), Weiterleitung mit iss und
+            // state.
             oauth.post('/oauth/authorize', { preHandler: browserAuth, bodyLimit: 8192 }, async (request, reply) => {
                 if (request.headers.origin !== new URL(config.PUBLIC_URL).origin)
                     return error(reply, 'invalid_request', 403);
@@ -229,6 +245,10 @@ export function createMcpOAuth(options) {
                 });
                 return result ? reply.redirect(result) : error(reply, 'invalid_request');
             });
+            // POST /oauth/token: öffentlicher Client ohne Authorization-Header. authorization_code: Code
+            // muss gültig, freigegeben und für Client/Redirect/Ressource ausgestellt sein, PKCE-Verifier
+            // wird zeitkonstant verglichen, der Code wird verbraucht. refresh_token: Rotation unter
+            // Familien-Lock; ein bereits verbrauchtes Refresh-Token widerruft die ganze Familie.
             oauth.post('/oauth/token', { bodyLimit: 8192 }, async (request, reply) => {
                 const parsed = tokenInput.safeParse(request.body);
                 if (!parsed.success)
@@ -285,6 +305,8 @@ export function createMcpOAuth(options) {
                 });
                 return result ? noCache(reply).send(result) : error(reply, 'invalid_grant');
             });
+            // POST /oauth/revoke (RFC 7009): widerruft die Familie des übergebenen Tokens, wenn die
+            // client_id passt. Antwortet immer leer mit 200, verrät also nicht, ob das Token existierte.
             oauth.post('/oauth/revoke', { bodyLimit: 8192 }, async (request, reply) => {
                 const parsed = z
                     .object({
@@ -300,7 +322,9 @@ export function createMcpOAuth(options) {
                 await pool.query(`update oauth_grant set revoked=true where client_id=$1 and id in (select grant_id from oauth_token where hash=$2)`, [parsed.data.client_id, tokenHash(parsed.data.token)]);
                 return noCache(reply).send({});
             });
-            // Sitzungsgebundener Widerruf: einmaliger, zufälliger CSRF-Nonce statt ungeschütztem POST.
+            // GET /oauth/connections: Liste der aktiven Freigaben des angemeldeten Nutzers mit
+            // Widerrufsknopf. Sitzungsgebundener Widerruf: einmaliger, zufälliger CSRF-Nonce statt
+            // ungeschütztem POST.
             oauth.get('/oauth/connections', { preHandler: browserAuth }, async (request, reply) => {
                 const nonce = opaque();
                 await pool.query('delete from oauth_request where expires_at<now()');
@@ -314,6 +338,8 @@ export function createMcpOAuth(options) {
         <form method="post" action="${issuer(config)}/connections"><input type="hidden" name="nonce" value="${nonce}">
         ${rows.map((g) => `<p>${escape(g.created_at)} · ${escape(g.scopes.join(', '))} <button name="grant" value="${g.id}">Widerrufen</button></p>`).join('') || '<p>Keine aktiven Verbindungen.</p>'}</form></html>`);
             });
+            // POST /oauth/connections: Widerruf einer Freigabe. Prüft Origin, verbraucht den Nonce des
+            // Nutzers atomar und widerruft nur Freigaben, die diesem Nutzer gehören.
             oauth.post('/oauth/connections', { preHandler: browserAuth, bodyLimit: 8192 }, async (request, reply) => {
                 if (request.headers.origin !== new URL(config.PUBLIC_URL).origin)
                     return error(reply, 'invalid_request', 403);
