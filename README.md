@@ -81,6 +81,24 @@ export async function DELETE() {
 }
 ```
 
+### Signierte Identitaetsheader (ab 1.2.0)
+
+Ohne Schluessel uebernimmt das Plugin `X-Auth-User-Id/-Email` ungeprueft. Das ist nur sicher,
+solange ausschliesslich nginx die App erreicht. Mit Schluessel gelten nur Header, die cgo-auth
+fuer genau diese App signiert hat (`X-Auth-Timestamp`, `X-Auth-Signature`, HMAC-SHA256 ueber
+Slug, Nutzer, E-Mail und Zeit, hoechstens 5 Minuten alt):
+
+```ts
+registerPlatformAuth(app, { slug: 'kitchen', key: process.env.PLATFORM_AUTH_KEY });
+// Next.js: currentUser(await headers(), { slug: 'opp', key: process.env.PLATFORM_AUTH_KEY })
+```
+
+Der App-Schluessel wird aus dem Plattform-Geheimnis von cgo-auth abgeleitet
+(`bin/derive-app-key.sh <slug>` im CGOPlattform-Repo, gleichwertig zu `deriveAppKey` aus
+`@cgo/platform-auth/signature`). Jede App bekommt einen eigenen Schluessel; eine kompromittierte
+App kann sich damit nicht bei einer anderen als jemand anderes ausgeben. Ohne `key` bleibt das
+alte Verhalten (Uebergang), beim Start steht dann eine Warnung im Log.
+
 ## App-eigene Logik bleibt app-eigen
 
 Dieses Paket beantwortet nur "wer ist angemeldet, und was, wenn niemand

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigurationError, currentUser, requireUserOrResponse } from './next.js';
+import { deriveAppKey, signIdentity } from './signature.js';
 
 function headersFrom(values: Record<string, string>): { get(name: string): string | null } {
   const lower = new Map(Object.entries(values).map(([k, v]) => [k.toLowerCase(), v]));
@@ -53,5 +54,31 @@ describe('requireUserOrResponse', () => {
     const response = result as Response;
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: 'Konfigurationsfehler: keine Identität' });
+  });
+});
+
+describe('currentUser mit Schluessel', () => {
+  const key = deriveAppKey('plattform-geheimnis-fuer-tests-0123456789', 'opp');
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signed = new Headers({
+    'x-auth-user-id': 'u1',
+    'x-auth-user-email': 'a@b.de',
+    'x-auth-timestamp': String(timestamp),
+    'x-auth-signature': signIdentity(key, {
+      slug: 'opp',
+      userId: 'u1',
+      email: 'a@b.de',
+      timestamp,
+    }),
+  });
+
+  it('liefert den Nutzer bei gueltiger Signatur', () => {
+    expect(currentUser(signed, { slug: 'opp', key })).toEqual({ id: 'u1', email: 'a@b.de' });
+  });
+
+  it('wirft bei fehlender oder fremder Signatur', () => {
+    const unsigned = new Headers({ 'x-auth-user-id': 'u1', 'x-auth-user-email': 'a@b.de' });
+    expect(() => currentUser(unsigned, { slug: 'opp', key })).toThrow(ConfigurationError);
+    expect(() => currentUser(signed, { slug: 'kitchen', key })).toThrow(ConfigurationError);
   });
 });

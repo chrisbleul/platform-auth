@@ -1,3 +1,5 @@
+import { parseTimestamp, verifyIdentity } from './signature.js';
+
 export interface CurrentUser {
   id: string;
   email: string;
@@ -32,11 +34,33 @@ export interface ReadonlyHeadersLike {
  * Konfigurationsfehler, kein anonymer Zugriff). Fuer Route Handler, die
  * JSON liefern muessen, requireUserOrResponse() weiter unten verwenden.
  */
-export function currentUser(headersList: ReadonlyHeadersLike): CurrentUser {
+export interface SignatureOptions {
+  /** Registry-Slug der App. */
+  slug: string;
+  /** PLATFORM_AUTH_KEY der App; leer = Header ungeprueft uebernehmen (Uebergangsbetrieb). */
+  key?: string | undefined;
+}
+
+export function currentUser(
+  headersList: ReadonlyHeadersLike,
+  options?: SignatureOptions,
+): CurrentUser {
   const id = headersList.get('x-auth-user-id');
   const email = headersList.get('x-auth-user-email');
   if (!id || !email) {
     throw new ConfigurationError(MISSING_HEADER_MESSAGE);
+  }
+  if (options?.key) {
+    const signature = headersList.get('x-auth-signature');
+    const timestamp = parseTimestamp(headersList.get('x-auth-timestamp'));
+    if (
+      !signature ||
+      !verifyIdentity(options.key, { slug: options.slug, userId: id, email, timestamp }, signature)
+    ) {
+      throw new ConfigurationError(
+        'Identitaetsheader ohne gueltige Signatur -- Request kam nicht ueber nginx/auth_request.',
+      );
+    }
   }
   return { id, email };
 }
@@ -47,9 +71,12 @@ export function currentUser(headersList: ReadonlyHeadersLike): CurrentUser {
  * einem Route Handler sonst Next's generische HTML-Fehlerseite ausliefert
  * -- falsch fuer einen JSON-Endpunkt). Aufrufer prueft "instanceof Response".
  */
-export function requireUserOrResponse(headersList: ReadonlyHeadersLike): CurrentUser | Response {
+export function requireUserOrResponse(
+  headersList: ReadonlyHeadersLike,
+  options?: SignatureOptions,
+): CurrentUser | Response {
   try {
-    return currentUser(headersList);
+    return currentUser(headersList, options);
   } catch (error) {
     if (error instanceof ConfigurationError) {
       return Response.json({ error: 'Konfigurationsfehler: keine Identität' }, { status: 500 });
