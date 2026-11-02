@@ -1,27 +1,21 @@
+import { parseTimestamp, verifyIdentity } from './signature.js';
 /** Wird geworfen, wenn X-Auth-User-Id/-Email fehlen -- siehe currentUser(). */
 export class ConfigurationError extends Error {
 }
 const MISSING_HEADER_MESSAGE = 'Kein Auth-Header gesetzt -- Request kam nicht ueber nginx/auth_request.';
-/**
- * nginx prueft jede Anfrage zentral gegen cgo-auth (auth_request) und setzt
- * X-Auth-User-Id/-Email erst NACH erfolgreicher Pruefung -- vom Client
- * mitgeschickte Werte werden dabei verworfen
- * (docs/arbeitsanweisung-app-plattform.md Abschnitt 3a im
- * CGOPlattform-Repo). Ein Request erreicht die App ueberhaupt nur, wenn die
- * Pruefung erfolgreich war; fehlen die Header trotzdem, lief der Request
- * nicht ueber nginx (z.B. direkter Aufruf waehrend der lokalen Entwicklung).
- *
- * Fuer Server Components/Server Actions: das Werfen ist hier beabsichtigt,
- * Next faengt es mit der naechsten error.tsx/dem Standard-Fehler-UI ab
- * (Plattform-Vertrag Abschnitt 3.3: ein fehlender Header ist ein
- * Konfigurationsfehler, kein anonymer Zugriff). Fuer Route Handler, die
- * JSON liefern muessen, requireUserOrResponse() weiter unten verwenden.
- */
-export function currentUser(headersList) {
+export function currentUser(headersList, options) {
     const id = headersList.get('x-auth-user-id');
     const email = headersList.get('x-auth-user-email');
     if (!id || !email) {
         throw new ConfigurationError(MISSING_HEADER_MESSAGE);
+    }
+    if (options?.key) {
+        const signature = headersList.get('x-auth-signature');
+        const timestamp = parseTimestamp(headersList.get('x-auth-timestamp'));
+        if (!signature ||
+            !verifyIdentity(options.key, { slug: options.slug, userId: id, email, timestamp }, signature)) {
+            throw new ConfigurationError('Identitaetsheader ohne gueltige Signatur -- Request kam nicht ueber nginx/auth_request.');
+        }
     }
     return { id, email };
 }
@@ -31,9 +25,9 @@ export function currentUser(headersList) {
  * einem Route Handler sonst Next's generische HTML-Fehlerseite ausliefert
  * -- falsch fuer einen JSON-Endpunkt). Aufrufer prueft "instanceof Response".
  */
-export function requireUserOrResponse(headersList) {
+export function requireUserOrResponse(headersList, options) {
     try {
-        return currentUser(headersList);
+        return currentUser(headersList, options);
     }
     catch (error) {
         if (error instanceof ConfigurationError) {

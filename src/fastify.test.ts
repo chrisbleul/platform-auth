@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 import { registerPlatformAuth, requireAuth } from './fastify.js';
+import { deriveAppKey, signIdentity } from './signature.js';
 
 function buildApp() {
   const app = Fastify({ logger: false });
@@ -48,6 +49,62 @@ describe('requireAuth', () => {
       method: 'GET',
       url: '/protected',
       headers: { 'x-auth-user-id': 'u1' },
+    });
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe('registerPlatformAuth mit Schluessel', () => {
+  const key = deriveAppKey('plattform-geheimnis-fuer-tests-0123456789', 'kitchen');
+
+  function buildSigned() {
+    const app = Fastify({ logger: false });
+    registerPlatformAuth(app, { slug: 'kitchen', key });
+    app.get('/protected', { preHandler: requireAuth }, async (request) => ({ user: request.user }));
+    return app;
+  }
+
+  function headers(overrides: Record<string, string> = {}) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = signIdentity(key, {
+      slug: 'kitchen',
+      userId: 'u1',
+      email: 'a@b.de',
+      timestamp,
+    });
+    return {
+      'x-auth-user-id': 'u1',
+      'x-auth-user-email': 'a@b.de',
+      'x-auth-timestamp': String(timestamp),
+      'x-auth-signature': signature,
+      ...overrides,
+    };
+  }
+
+  it('uebernimmt signierte Header', async () => {
+    const res = await buildSigned().inject({
+      method: 'GET',
+      url: '/protected',
+      headers: headers(),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ user: { userId: 'u1', email: 'a@b.de' } });
+  });
+
+  it('verwirft Header ohne Signatur', async () => {
+    const res = await buildSigned().inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { 'x-auth-user-id': 'u1', 'x-auth-user-email': 'a@b.de' },
+    });
+    expect(res.statusCode).toBe(500);
+  });
+
+  it('verwirft eine fuer einen anderen Nutzer ausgestellte Signatur', async () => {
+    const res = await buildSigned().inject({
+      method: 'GET',
+      url: '/protected',
+      headers: headers({ 'x-auth-user-id': 'u2' }),
     });
     expect(res.statusCode).toBe(500);
   });

@@ -27,11 +27,17 @@ export interface ReadonlyHeadersLike {
  * Konfigurationsfehler, kein anonymer Zugriff). Fuer Route Handler, die
  * JSON liefern muessen, requireUserOrResponse() weiter unten verwenden.
  */
-export declare function currentUser(headersList: ReadonlyHeadersLike): CurrentUser;
+export interface SignatureOptions {
+    /** Registry-Slug der App. */
+    slug: string;
+    /** PLATFORM_AUTH_KEY der App; leer = Header ungeprueft uebernehmen (Uebergangsbetrieb). */
+    key?: string | undefined;
+}
+export declare function currentUser(headersList: ReadonlyHeadersLike, options?: SignatureOptions): CurrentUser;
 /**
  * Variante fuer app/api/.../route.ts-Handler: liefert entweder den Nutzer
  * oder eine fertige 500-JSON-Response, statt ungefangen zu werfen (was in
  * einem Route Handler sonst Next's generische HTML-Fehlerseite ausliefert
  * -- falsch fuer einen JSON-Endpunkt). Aufrufer prueft "instanceof Response".
  */
-export declare function requireUserOrResponse(headersList: ReadonlyHeadersLike): CurrentUser | Response;
+export declare function requireUserOrResponse(headersList: ReadonlyHeadersLike, options?: SignatureOptions): CurrentUser | Response;
