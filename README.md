@@ -95,6 +95,7 @@ Vereinfachung mehr.
 ```bash
 npm install
 npm test
+npm run format  # Prettier fuer src/, die CI prueft mit npm run format:check
 npm run build   # vor jedem Commit an src/ -- dist/ ist eingecheckt
 ```
 
