@@ -8,7 +8,9 @@ function headersFrom(values: Record<string, string>): { get(name: string): strin
 
 describe('currentUser', () => {
   it('liefert id+email, wenn beide Header gesetzt sind', () => {
-    const result = currentUser(headersFrom({ 'x-auth-user-id': 'u1', 'x-auth-user-email': 'a@b.de' }));
+    const result = currentUser(
+      headersFrom({ 'x-auth-user-id': 'u1', 'x-auth-user-email': 'a@b.de' }),
+    );
     expect(result).toEqual({ id: 'u1', email: 'a@b.de' });
   });
 
@@ -17,7 +19,9 @@ describe('currentUser', () => {
   });
 
   it('wirft ConfigurationError, wenn nur die Id fehlt', () => {
-    expect(() => currentUser(headersFrom({ 'x-auth-user-email': 'a@b.de' }))).toThrow(ConfigurationError);
+    expect(() => currentUser(headersFrom({ 'x-auth-user-email': 'a@b.de' }))).toThrow(
+      ConfigurationError,
+    );
   });
 
   it('wirft ConfigurationError, wenn nur die Email fehlt', () => {
@@ -28,15 +32,17 @@ describe('currentUser', () => {
     // nginx setzt bei fehlgeschlagener Pruefung ggf. einen leeren Header statt
     // ihn ganz wegzulassen -- ein leerer String darf nicht als "vorhanden"
     // durchgehen.
-    expect(() => currentUser(headersFrom({ 'x-auth-user-id': '', 'x-auth-user-email': 'a@b.de' }))).toThrow(
-      ConfigurationError,
-    );
+    expect(() =>
+      currentUser(headersFrom({ 'x-auth-user-id': '', 'x-auth-user-email': 'a@b.de' })),
+    ).toThrow(ConfigurationError);
   });
 });
 
 describe('requireUserOrResponse', () => {
   it('liefert den Nutzer direkt, wenn die Header da sind', () => {
-    const result = requireUserOrResponse(headersFrom({ 'x-auth-user-id': 'u1', 'x-auth-user-email': 'a@b.de' }));
+    const result = requireUserOrResponse(
+      headersFrom({ 'x-auth-user-id': 'u1', 'x-auth-user-email': 'a@b.de' }),
+    );
     expect(result).toEqual({ id: 'u1', email: 'a@b.de' });
   });
 

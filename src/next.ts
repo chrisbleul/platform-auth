@@ -6,7 +6,8 @@ export interface CurrentUser {
 /** Wird geworfen, wenn X-Auth-User-Id/-Email fehlen -- siehe currentUser(). */
 export class ConfigurationError extends Error {}
 
-const MISSING_HEADER_MESSAGE = 'Kein Auth-Header gesetzt -- Request kam nicht ueber nginx/auth_request.';
+const MISSING_HEADER_MESSAGE =
+  'Kein Auth-Header gesetzt -- Request kam nicht ueber nginx/auth_request.';
 
 /** Alles, was next/headers' headers() und die Web-Standard-Headers-Klasse
  * gemeinsam haben -- absichtlich kein next-Import hier, damit dieses Paket
